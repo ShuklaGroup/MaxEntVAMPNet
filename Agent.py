@@ -10,38 +10,47 @@ from scipy.stats import entropy
 
 
 class Agent(ABC):
-
+    """Abstract class for Agent object.
+    """
     def __init__(self, arg1):
         pass
 
     @abstractmethod
     def set_data(self):
-        """
-        Assign data to agent.
+        """Assign data to agent.
         :return:
         """
         pass
 
     @abstractmethod
     def train(self):
-        """
-        This function learns the parameters that the agent will use to score a structure.
+        """Learn the parameters that the agent will use to score a structure.
         :return:
         """
         pass
 
     @abstractmethod
     def score(self):
-        """
-        This function scores a structure.
+        """Score a structure.
         :return:
         """
         pass
 
 
 class AgentReap(Agent):
+    """Agent class for REAP or MA REAP simulations.
+    """
 
     def __init__(self, cv_weights, delta, data=None):
+        """Constructor for AgentReap.
+
+        :param cv_weights: list[float].
+            Weights for collective variables.
+        :param delta: float in [0, 1].
+            Max change in collective variable weights between rounds.
+        :param data: list[np.ndarray].
+            Initial trajectory data for agent. Not necessary.
+        """
         assert (np.allclose(sum(cv_weights), 1))  # CV weights must add up to 1
         assert (0 <= delta <= 1)  # delta must be between 0 and 1
         self.cv_weights = cv_weights
@@ -59,10 +68,11 @@ class AgentReap(Agent):
         self.stakes = None
 
     def get_log_info(self):
-        '''
-        Returns a dictionary with certain object attributes for logging purposes.
-        :return:
-        '''
+        """Returns a dictionary with certain object attributes for logging purposes.
+
+        :return: dict.
+            Logs.
+        """
         logs = dict(
             cv_weights=self.cv_weights,
             delta=self.delta,
@@ -77,6 +87,12 @@ class AgentReap(Agent):
         return logs
 
     def set_data(self, data):
+        """Set data (trajectories) for the agent.
+
+        :param data: list[np.ndarray].
+            Trajectory data.
+        :return: None.
+        """
         if self.data is None:
             self.data = data
         else:
@@ -86,25 +102,28 @@ class AgentReap(Agent):
         self.stdev = self.data_concat.std(axis=0)
 
     def set_states(self, states):
-        """
-        :param states: Usually, central frames of clusters.
-        :return:
+        """Set states that agent can select to restart simulations.
+
+        :param states: np.ndarray of shape (n_states, ndim).
+            Usually, central frames of clusters.
+        :return: None.
         """
         self.states = states
 
     def set_stakes(self, stakes):
-        """
-        Necessary only for multiagent runs.
-        :param stakes:
-        :return:
+        """Set agent stakes. Necessary only for multiagent runs.
+
+        :param stakes: np.ndarray.
+        :return: None.
         """
         self.stakes = stakes
 
     def score(self, cv_weights=None):
-        """
-        Score takes the role of the reward function. In the case of REAP, this is based on the standardized Euclidean
+        """Score takes the role of the reward function. In the case of REAP, this is based on the standardized Euclidean
         distance.
-        :return:
+
+        :return: np.ndarray of shape (n_states,).
+            Scores for each state.
         """
         if self.stakes is None:
             stakes = np.ones(len(self.states))
@@ -120,10 +139,10 @@ class AgentReap(Agent):
 
         return stakes * distances
 
-    def train(self):  # TODO: constraint the maximum reward an agent can give
-        """
-        Get new CV weights by maximizing score.
-        :return:
+    def train(self):
+        """Get new CV weights by maximizing REAP score.
+
+        :return: None.
         """
         weights_prev = self.cv_weights
         delta = self.delta
@@ -160,8 +179,23 @@ class AgentReap(Agent):
 
 
 class AgentVampReap(AgentReap):
+    """Agent class for VAMP + MA REAP simulations.
+    """
 
-    def __init__(self, cv_weights, delta, estimator, data=None, propagation_steps=10):
+    def __init__(self, cv_weights, delta, estimator, data=None, propagation_steps=1):
+        """Constructor for AgentVampReap.
+
+        :param cv_weights: list[float].
+            Weights for collective variables.
+        :param delta: float in [0, 1].
+            Max change in collective variable weights between rounds.
+        :param estimator: deeptime.decomposition._vamp.VAMP.
+            Estimator object for dimensionality reduction.
+        :param data: list[np.ndarray].
+            Initial trajectory data for agent. Not necessary.
+        :param propagation_steps: int, default = 1.
+            This option allows to apply the Koopman operator propagation_steps times to the input conformation.
+        """
         # Note that here the term CV is (inaccurately) used to refer to VAMP-reduced coordinates.
         # cv_weights must have length equal to the number of coordinates we want to keep, not to the number of total
         # features
@@ -172,10 +206,11 @@ class AgentVampReap(AgentReap):
             self.transformed_data = self.estimator.transform(self.data_concat)
 
     def get_log_info(self):
-        '''
-        Returns a dictionary with certain object attributes for logging purposes.
-        :return: logs (dict).
-        '''
+        """Returns a dictionary with certain object attributes for logging purposes.
+
+        :return: dict.
+            Logs.
+        """
         logs = AgentReap.get_log_info(self)
         logs |= dict(
             estimator=self.estimator,
@@ -185,21 +220,42 @@ class AgentVampReap(AgentReap):
         return logs
 
     def set_data(self, data):
+        """Set data (trajectories) for the agent.
+
+        :param data: list[np.ndarray].
+            Trajectory data.
+        :return: None.
+        """
         AgentReap.set_data(self, data)
         self.transformed_data = self.estimator.transform(self.data_concat)
         self.means = self.transformed_data.mean(axis=0)
         self.stdev = self.transformed_data.std(axis=0)
 
     def set_estimator(self, estimator):
+        """Set the estimator used by the agent. Needed to update the estimator once it has been fit to new data.
+
+        :param estimator: deeptime.decomposition._vamp.VAMP.
+            Estimator object for dimensionality reduction.
+        :return: None.
+        """
         self.estimator = estimator
 
     def set_states(self, states):
+        """Set states that agent can select to restart simulations.
+
+        :param states: np.ndarray of shape (n_states, ndim).
+            Usually, central frames of clusters.
+        :return: None.
+        """
         self.states = self._propagate_kinetic_model(states)
 
     def _propagate_kinetic_model(self, frames):
-        """
-        Propagate the candidate frames using the kinetic model.
-        :return:
+        """Propagate the candidate frames using the kinetic model.
+
+        :param frames: np.ndarray of shape (n_frames, n_features).
+            Frames to transform applying Koopman operator.
+        :return: np.ndarray of shape (n_frames, ndim).
+            Transformed frames.
         """
         model = self.estimator.fetch_model()
         inst_obs = model.transform(frames)
@@ -209,11 +265,17 @@ class AgentVampReap(AgentReap):
 
 
 class AgentVampNetReap(AgentVampReap):
+    """Agent class for VAMPNet + MA REAP simulations.
 
+    Note that the self.estimator attribute will be a deeptime.util.torch.MLP object for this class.
+    """
     def _propagate_kinetic_model(self, frames):
-        """
-        Propagate the candidate frames using the kinetic model.
-        :return:
+        """Transform specified simulation frames using the learned VAMPNet.
+
+        :param frames: np.ndarray of shape (n_frames, n_features).
+            Features to transform.
+        :return: np.ndarray of shape (n_frames, ndim).
+            Transformed frames.
         """
         model = self.estimator.fetch_model()
         propagated = model.transform(frames)
@@ -221,13 +283,25 @@ class AgentVampNetReap(AgentVampReap):
 
 
 class AgentVaeReap(AgentVampNetReap):
-    # It's the same implementation as the base class, I just wanted to have a class with a different name
+    """Identical implementation to AgentVampNetReap with a different name.
+
+    Note that the self.estimator attribute will be a deeptime.decomposition.deep._tae.TVAE object for this class.
+    """
     pass
 
 
 class EntropyBasedAgent(Agent):
+    """Agent class for VAMPNet + MaxEnt simulations.
+    """
 
     def __init__(self, estimator, data=None):
+        """Constructor for EntropyBasedAgent.
+
+        :param estimator: deeptime.util.torch.MLP.
+            VAMPNet estimator. Note that the output non-linearity must be softmax or similar.
+        :param data: list[np.ndarray].
+            Initial trajectory data for agent. Not necessary.
+        """
         self.estimator = estimator
         self.data = data
         self.data_concat = None
@@ -238,9 +312,10 @@ class EntropyBasedAgent(Agent):
         self.states = self.transformed_data
 
     def get_log_info(self):
-        """
-        Returns a dictionary with certain object attributes for logging purposes.
-        :return:
+        """Returns a dictionary with certain object attributes for logging purposes.
+
+        :return: dict.
+            Logs.
         """
         logs = dict(
             estimator=self.estimator,
@@ -250,6 +325,12 @@ class EntropyBasedAgent(Agent):
         return logs
 
     def set_data(self, data):
+        """Set data (trajectories) for the agent.
+
+        :param data: list[np.ndarray].
+            Trajectory data.
+        :return: None.
+        """
         if self.data is None:
             self.data = data
         else:
@@ -258,12 +339,29 @@ class EntropyBasedAgent(Agent):
         self.transformed_data = self.estimator.model.transform(self.data_concat)
 
     def set_estimator(self, estimator):
+        """Set the estimator used by the agent. Needed to update the estimator once it has been fit to new data.
+
+        :param estimator: deeptime.util.torch.MLP.
+            Estimator object for soft discretization.
+        :return: None.
+        """
         self.estimator = estimator
 
     def set_states(self, states):
+        """Set states that agent can select to restart simulations.
+
+        :param states: np.ndarray of shape (n_states, ndim).
+            Since MaxEnt does not require discretization, any conformation can be considered a state.
+        :return: None.
+        """
         self.states = self.estimator.transform(states)
 
     def score(self):
+        """Compute score for MaxEnt (Shannon entropy).
+
+        :return: np.ndarray of shape (n_states,).
+            Shannon entropy of the conformations considered as states, potentially all conformations.
+        """
         return entropy(self.states, axis=1)
 
     def train(self):

@@ -1,3 +1,6 @@
+"""Definition of the classes for VAMP + REAP implementations.
+"""
+
 import numpy as np
 
 from Reap import Reap, MultiagentReap
@@ -5,10 +8,9 @@ from Agent import AgentVampReap
 from deeptime.decomposition import VAMP
 
 
-# TODO: change in implementation: the adaptive sampling object keeps a single kinetic model.
-# Even if multiple agents are used, they all reference the same kinetic model.
-
 class VampReap(Reap):
+    """This class implements VAMP + REAP adaptive sampling using RegularSpace clustering.
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -24,6 +26,36 @@ class VampReap(Reap):
                  save_info=False,
                  cluster_args=None
                  ):
+        """Constructor for VampReap class.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param cv_weights: list[float].
+            Weights for collective variables.
+        :param delta: float in [0, 1].
+            Max change in collective variable weights between rounds.
+        :param n_candidates: int, default = 50.
+            Number of Least Counts candidates to consider in each iteration.
+        :param lagtime: int, default = 1.
+            Lag time expressed as number of frames.
+        :param propagation_steps: int, default = 1.
+            This option allows to apply the Koopman operator propagation_steps times to the input conformation.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        """
         Reap.__init__(self, system=system, root=root, basename=basename, save_format=save_format, save_rate=save_rate,
                       features=features, cv_weights=cv_weights, delta=delta, n_candidates=n_candidates,
                       save_info=save_info, cluster_args=cluster_args)
@@ -40,6 +72,10 @@ class VampReap(Reap):
         self.agent = AgentVampReap(cv_weights, delta, self.estimator, propagation_steps=self.propagation_steps)
 
     def _update_data(self):
+        """Update data with newly saved trajectories. This method also updates the estimator.
+
+        :return: None.
+        """
         fnames = self.fhandler.list_all_files()
         new_fnames = []
         for fn in fnames:
@@ -59,7 +95,8 @@ class VampReap(Reap):
 
 
 class MultiagentVampReap(MultiagentReap):
-
+    """This class implements VAMP + multiagent REAP adaptive sampling using RegularSpace clustering.
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -79,6 +116,46 @@ class MultiagentVampReap(MultiagentReap):
                  save_info=False,
                  cluster_args=None
                  ):
+        """Constructor for MultiagentVampReap class.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param cv_weights: list[float].
+            Weights for collective variables.
+        :param delta: float in [0, 1].
+            Max change in collective variable weights between rounds.
+        :param n_agents: int, default = 1.
+            Number of agents.
+        :param n_candidates: int, default = 50.
+            Number of Least Counts candidates to consider in each iteration.
+        :param stakes_method: str {percentage, equal, logistic}, default = 'percentage'.
+            Method used to compute the stakes of the agent.
+        :param stakes_kwargs: dict.
+            Aguments required to compute stakes.
+            In current implementation, this is only needed when using stakes_method = 'logistic', in which case
+            stakes_kwargs must be defined as {'k': float} where k is the kappa parameter.
+        :param interaction: str {collaborative, noncollaborative, competitive}, default = 'collaborative'.
+            Regime to combine rewards from different agents.
+        :param lagtime: int, default = 1.
+            Lag time expressed as number of frames.
+        :param propagation_steps: int, default = 1.
+            This option allows to apply the Koopman operator propagation_steps times to the input conformation.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        """
         MultiagentReap.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
                                 save_rate=save_rate, features=features, cv_weights=cv_weights, delta=delta,
                                 n_agents=n_agents, n_candidates=n_candidates, stakes_method=stakes_method,
@@ -111,6 +188,10 @@ class MultiagentVampReap(MultiagentReap):
                               for _ in range(self.n_agents)]
 
     def _update_data(self):
+        """Update data with newly saved trajectories. This method also updates the estimator.
+
+        :return: None.
+        """
         fnames = self.fhandler.list_all_files()
         new_fnames = []
         for fn in fnames:

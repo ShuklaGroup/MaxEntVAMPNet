@@ -1,3 +1,6 @@
+"""Definition of the classes for TVAE + REAP implementations.
+"""
+
 import numpy as np
 import torch
 from deeptime.decomposition.deep import TVAEEncoder, TVAE
@@ -8,6 +11,9 @@ from VampNetReap import VampNetReap, MultiagentVampNetReap
 
 
 class VaeReap(VampNetReap):
+    """This class implements REAP adaptive sampling using RegularSpace clustering in combination with TVAEs
+    from the deeptime package.
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -19,7 +25,6 @@ class VaeReap(VampNetReap):
                  delta=0.05,
                  n_candidates=50,
                  lagtime=1,
-                 # propagation_steps=10, --> Does not apply
                  device="cuda",
                  tvae_encoder=None,
                  tvae_decoder=None,
@@ -30,6 +35,48 @@ class VaeReap(VampNetReap):
                  save_info=False,
                  cluster_args=None
                  ):
+        """Constructor for VaeReap class.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param cv_weights: list[float].
+            Weights for collective variables.
+        :param delta: float in [0, 1].
+            Max change in collective variable weights between rounds.
+        :param n_candidates: int, default = 50.
+            Number of Least Counts candidates to consider in each iteration.
+        :param lagtime: int, default = 1.
+            Lag time expressed as number of frames.
+        :param device: str.
+            Device where training of the VAMPNet will take place. See pytorch documentation for options.
+        :param tvae_encoder: deeptime.decomposition.deep._tae.TVAEEncoder.
+            Encoder for the TVAE. See deeptime documentation for details.
+        :param tvae_decoder: typically deeptime.util.torch.MLP.
+            Decoder for the TVAE. See deeptime documentation for details.
+        :param tvae_learning_rate: float, default 1e-4.
+            Learning rate for TVAE.
+        :param tvae_batch_size: int, default = 64.
+            Batch size for TVAE.
+        :param tvae_epochs: int, default = 100.
+            Number of training epochs per adaptive sampling round.
+        :param tvae_num_threads: int, default = 1.
+            Number of threads available for TVAE fitting.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        """
         VampNetReap.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
                              save_rate=save_rate, features=features, cv_weights=cv_weights, delta=delta,
                              n_candidates=n_candidates, save_info=save_info, cluster_args=cluster_args)
@@ -57,6 +104,9 @@ class VaeReap(VampNetReap):
 
 
 class MultiagentVaeReap(MultiagentVampNetReap):
+    """This class implements MA REAP adaptive sampling using RegularSpace clustering in combination with TVAEs
+    from the deeptime package.
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -83,6 +133,58 @@ class MultiagentVaeReap(MultiagentVampNetReap):
                  save_info=False,
                  cluster_args=None
                  ):
+        """Constructor for MultiagentVaeReap.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param cv_weights: list[float].
+            Weights for collective variables.
+        :param delta: float in [0, 1].
+            Max change in collective variable weights between rounds.
+        :param n_agents: int, default = 1.
+            Number of agents.
+        :param n_candidates: int, default = 50.
+            Number of Least Counts candidates to consider in each iteration.
+        :param stakes_method: str {percentage, equal, logistic}, default = 'percentage'.
+            Method used to compute the stakes of the agent.
+        :param stakes_kwargs: dict.
+            Aguments required to compute stakes.
+            In current implementation, this is only needed when using stakes_method = 'logistic', in which case
+            stakes_kwargs must be defined as {'k': float} where k is the kappa parameter.
+        :param interaction: str {collaborative, noncollaborative, competitive}, default = 'collaborative'.
+            Regime to combine rewards from different agents.
+        :param lagtime: int, default = 1.
+            Lag time expressed as number of frames.
+        :param device: str.
+            Device where training of the VAMPNet will take place. See pytorch documentation for options.
+        :param tvae_encoder: deeptime.decomposition.deep._tae.TVAEEncoder.
+            Encoder for the TVAE. See deeptime documentation for details.
+        :param tvae_decoder: typically deeptime.util.torch.MLP.
+            Decoder for the TVAE. See deeptime documentation for details.
+        :param tvae_learning_rate: float, default 1e-4.
+            Learning rate for TVAE.
+        :param tvae_batch_size: int, default = 64.
+            Batch size for TVAE.
+        :param tvae_epochs: int, default = 100.
+            Number of training epochs per adaptive sampling round.
+        :param tvae_num_threads: int, default = 1.
+            Number of threads available for TVAE fitting.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        """
         MultiagentVampNetReap.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
                                        save_rate=save_rate, features=features, cv_weights=cv_weights, delta=delta,
                                        n_agents=n_agents, n_candidates=n_candidates, stakes_method=stakes_method,

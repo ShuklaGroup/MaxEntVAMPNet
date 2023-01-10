@@ -1,8 +1,6 @@
-"""
-Definition of the base AdaptiveSampling class for REAP-like implementations.
+"""Definition of the base AdaptiveSampling class for REAP-like implementations.
 Derived classes that implement more advanced adaptive sampling schemes will inherit from this class.
 """
-
 import os
 from abc import ABC, abstractmethod
 from collections import Counter
@@ -25,8 +23,7 @@ from FileHandler import FileHandler
 
 
 class AdaptiveSampling(ABC):
-    """
-    Abstract class for adaptive sampling object.
+    """Abstract class for adaptive sampling object.
     """
     def __init__(self):
         pass
@@ -273,6 +270,12 @@ class LeastCountsBis(LeastCounts):
     """
 
     def _cluster(self, min_clusters):
+        """Perform clustering using BisectingKMeans.
+
+        :param min_clusters: int.
+            Minimum number of clusters required.
+        :return: None.
+        """
         total_frames = self.concat_data.shape[0]
         b, gamma, max_frames = self.clustering_args
         d = min(len(self.features), 3)
@@ -290,8 +293,7 @@ class LeastCountsBis(LeastCounts):
 
 
 class LeastCountsRegSpace(LeastCounts):
-    """
-    Use RegSpace clustering instead of MiniBatchKMeans.
+    """This class implements Least Counts adaptive sampling using RegularSpace clustering.
     """
 
     def __init__(self,
@@ -303,6 +305,26 @@ class LeastCountsRegSpace(LeastCounts):
                  features=None,
                  save_info=False,
                  cluster_args=None):
+        """Constructor for LeastCountsRegSpace.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        """
         LeastCounts.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
                              save_rate=save_rate, features=features, save_info=save_info)
         if cluster_args is None:
@@ -311,12 +333,26 @@ class LeastCountsRegSpace(LeastCounts):
             self.cluster_args = cluster_args
 
     def _cluster(self, min_clusters):
+        """Perform clustering using BisectingKMeans.
+
+        :param min_clusters: int.
+            Minimum number of clusters required.
+        :return: None.
+        """
         dmin, max_centers = self.cluster_args
         self._cluster_object = \
             RegularSpace(dmin=dmin,
                          max_centers=max_centers).fit(self.concat_data)
 
     def _find_candidates(self, n_select):
+        """Determine a representative simulation frame for each cluster.
+
+        :param n_select: int.
+            Maximum number of clusters to consider.
+        :return: least_counts (np.ndarray), central_frames_indices (np.ndarray)
+            least_counts: coordinates in collective variable space for representative frames.
+            central_frames_indices: indices for representative frames.
+        """
         self._cluster(n_select)
         counts = Counter(self._cluster_object.model.transform(self.concat_data))
         least_counts = np.asarray(counts.most_common()[::-1][:n_select])[:, 0]
@@ -328,6 +364,9 @@ class LeastCountsRegSpace(LeastCounts):
 
 
 class VampLeastCounts(LeastCountsRegSpace):
+    """This class implements Least Counts adaptive sampling using RegularSpace clustering in combination with VAMP
+    from the deeptime package.
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -341,6 +380,32 @@ class VampLeastCounts(LeastCountsRegSpace):
                  lagtime=1,
                  propagation_steps=1,
                  ):
+        """Constructor for VampLeastCounts.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        :param ndim: int, default = 2.
+            Number of reduction dimensions to use with VAMP.
+        :param lagtime: int, default = 1.
+            Lag time expressed as number of frames.
+        :param propagation_steps: int, default = 1.
+            This option allows to apply the Koopman operator propagation_steps times to the input conformation.
+        """
         LeastCountsRegSpace.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
                                      save_rate=save_rate, features=features, save_info=save_info,
                                      cluster_args=cluster_args)
@@ -351,14 +416,21 @@ class VampLeastCounts(LeastCountsRegSpace):
         # number to prevent errors, but this may result in poor quality models.
 
     def _update_data(self):
+        """Update data with newly saved trajectories.
+
+        :return: None.
+        """
         LeastCountsRegSpace._update_data(self)
         self.estimator.fit(self.data)
         self.concat_data = self._propagate_kinetic_model(np.concatenate(self.data, axis=0))
 
     def _propagate_kinetic_model(self, frames):
-        """
-        Propagate the candidate frames using the kinetic model.
-        :return:
+        """Propagate the candidate frames using the kinetic model.
+
+        :param frames: np.ndarray of shape (n_frames, n_features).
+            Frames to transform applying Koopman operator.
+        :return: np.ndarray of shape (n_frames, ndim).
+            Transformed frames.
         """
         model = self.estimator.fetch_model()
         inst_obs = model.transform(frames)
@@ -366,6 +438,12 @@ class VampLeastCounts(LeastCountsRegSpace):
         return propagated
 
     def _save_logs(self, filename):
+        """Save logging information of the run.
+
+        :param filename: str.
+            Name of output file.
+        :return: None.
+        """
         logs = dict(
             system=self.system,
             fhandler=self.fhandler,
@@ -383,7 +461,9 @@ class VampLeastCounts(LeastCountsRegSpace):
 
 
 class VampNetLeastCounts(VampLeastCounts):
-
+    """This class implements Least Counts adaptive sampling using RegularSpace clustering in combination with VAMPNets
+    from the deeptime package.
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -395,15 +475,50 @@ class VampNetLeastCounts(VampLeastCounts):
                  cluster_args=None,
                  ndim=2,
                  lagtime=1,
-                 propagation_steps=None,
                  device="cuda",
                  vnet_lobe=None,
                  vnet_learning_rate=1e-4,
                  vnet_batch_size=64,
                  vnet_epochs=100,
                  vnet_num_threads=1,):
+        """Constructor for VampNetLeastCounts.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        :param ndim: int, default = 2.
+            Size of VAMPNet output layer.
+        :param lagtime: int, default = 1.
+            Lag time expressed as number of frames.
+        :param device: str.
+            Device where training of the VAMPNet will take place. See pytorch documentation for options.
+        :param vnet_lobe: deeptime.util.torch.MLP.
+            Multilayer perceptron model for VAMPNet. Lobe duplication is hard-coded.
+        :param vnet_learning_rate: float, default 1e-4.
+            Learning rate for VAMPNet.
+        :param vnet_batch_size: int, default = 64.
+            Batch size for VAMPNet.
+        :param vnet_epochs: int, default = 100.
+            Number of training epochs per adaptive sampling round.
+        :param vnet_num_threads: int, default = 1.
+            Number of threads available for VAMPNet fitting.
+        """
         VampLeastCounts.__init__(self, system, root, basename, save_format, save_rate, features, save_info,
-                                 cluster_args, ndim, lagtime, propagation_steps)
+                                 cluster_args, ndim, lagtime)
         self.batch_size = vnet_batch_size
         self.epochs = vnet_epochs
         self._set_device(device, vnet_num_threads)
@@ -414,6 +529,14 @@ class VampNetLeastCounts(VampLeastCounts):
         self.estimator = VAMPNet(lobe=vnet_lobe, learning_rate=vnet_learning_rate, device=self.device)
 
     def _set_device(self, device, num_threads):
+        """Set the device for VAMPNet training.
+
+        :param device: str.
+            Device where training of the VAMPNet will take place. See pytorch documentation for options.
+        :param num_threads: int, default = 1.
+            Number of threads available for VAMPNet fitting.
+        :return: None.
+        """
         if (device == "cuda") and torch.cuda.is_available():
             self.device = torch.device("cuda")
             torch.backends.cudnn.benchmark = True
@@ -422,24 +545,55 @@ class VampNetLeastCounts(VampLeastCounts):
         torch.set_num_threads(num_threads)
 
     def _propagate_kinetic_model(self, frames):
+        """Transform specified simulation frames using the learned VAMPNet.
+
+        :param frames: np.ndarray of shape (n_frames, n_features).
+            Features to transform.
+        :return: np.ndarray of shape (n_frames, ndim).
+            Transformed frames.
+        """
         model = self.estimator.fetch_model()
         propagated = model.transform(frames)
         return propagated
 
     def _lagged_dataset(self, data):
+        """Convert trajectories to deeptime.util.data.TrajectoryDataset object.
+
+        :param data: list[np.ndarray].
+            List of trajectories.
+        :return: deeptime.util.data.TrajectoryDataset.
+            Lagged dataset object.
+        """
         data_float32 = list(map(lambda x: x.astype(np.float32), data))
         return TrajectoryDataset.from_trajectories(self.lagtime, data_float32)
 
     def _format_data(self, data, batch_size):
+        """Format list of trajectories into the correct format to fit a VAMPNet.
+
+        :param data: list[np.ndarray].
+            List of trajectories.
+        :param batch_size: int.
+            Batch size for VAMPNet fitting.
+        :return: torch.utils.data.dataloader.DataLoader.
+            Data loader to train VAMPNet.
+        """
         lagged_data = self._lagged_dataset(data)
         loader_train = DataLoader(lagged_data, batch_size=batch_size, shuffle=True)
         return loader_train
 
     def _fit_estimator(self):
+        """Fit VAMPNet with list of trajectories currently stored in self.data.
+
+        :return: None.
+        """
         loader_train = self._format_data(self.data, self.batch_size)
         self.estimator.fit(loader_train, n_epochs=self.epochs)
 
     def _update_data(self):
+        """Update data with newly saved trajectories.
+
+        :return: None.
+        """
         fnames = self.fhandler.list_all_files()
         new_fnames = []
         for fn in fnames:
@@ -457,6 +611,10 @@ class VampNetLeastCounts(VampLeastCounts):
 
 
 class VaeLeastCounts(VampLeastCounts):
+    """This class implements Least Counts adaptive sampling using RegularSpace clustering in combination with TVAEs
+    from the deeptime package.
+
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -468,7 +626,6 @@ class VaeLeastCounts(VampLeastCounts):
                  cluster_args=None,
                  ndim=2,
                  lagtime=1,
-                 propagation_steps=None,
                  device="cuda",
                  tvae_encoder=None,
                  tvae_decoder=None,
@@ -476,8 +633,46 @@ class VaeLeastCounts(VampLeastCounts):
                  tvae_batch_size=64,
                  tvae_epochs=100,
                  tvae_num_threads=1, ):
+        """Constructor for VaeLeastCounts.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        :param ndim: int, default = 2.
+            Size of VAMPNet output layer.
+        :param lagtime: int, default = 1.
+            Lag time expressed as number of frames.
+        :param device: str.
+            Device where training of the VAMPNet will take place. See pytorch documentation for options.
+        :param tvae_encoder: deeptime.decomposition.deep._tae.TVAEEncoder.
+            Encoder for the TVAE. See deeptime documentation for details.
+        :param tvae_decoder: typically deeptime.util.torch.MLP.
+            Decoder for the TVAE. See deeptime documentation for details.
+        :param tvae_learning_rate: float, default 1e-4.
+            Learning rate for TVAE.
+        :param tvae_batch_size: int, default = 64.
+            Batch size for TVAE.
+        :param tvae_epochs: int, default = 100.
+            Number of training epochs per adaptive sampling round.
+        :param tvae_num_threads: int, default = 1.
+            Number of threads available for TVAE fitting.
+        """
         VampLeastCounts.__init__(self, system, root, basename, save_format, save_rate, features, save_info,
-                                 cluster_args, ndim, lagtime, propagation_steps)
+                                 cluster_args, ndim, lagtime)
         self.batch_size = tvae_batch_size
         self.epochs = tvae_epochs
         self._set_device(device, tvae_num_threads)
@@ -493,6 +688,14 @@ class VaeLeastCounts(VampLeastCounts):
         self.estimator = TVAE(tvae_encoder, tvae_decoder, learning_rate=tvae_learning_rate)
 
     def _set_device(self, device, num_threads):
+        """Set the device for VAMPNet training.
+
+        :param device: str.
+            Device where training of the VAMPNet will take place. See pytorch documentation for options.
+        :param num_threads: int, default = 1.
+            Number of threads available for TVAE fitting.
+        :return: None.
+        """
         if (device == "cuda") and torch.cuda.is_available():
             self.device = torch.device("cuda")
             torch.backends.cudnn.benchmark = True
@@ -501,24 +704,55 @@ class VaeLeastCounts(VampLeastCounts):
         torch.set_num_threads(num_threads)
 
     def _propagate_kinetic_model(self, frames):
+        """Transform specified simulation frames using the learned TVAE.
+
+        :param frames: np.ndarray of shape (n_frames, n_features).
+            Features to transform.
+        :return: np.ndarray of shape (n_frames, ndim).
+            Transformed frames.
+        """
         model = self.estimator.fetch_model()
         propagated = model.transform(frames)
         return propagated
 
     def _lagged_dataset(self, data):
+        """Convert trajectories to deeptime.util.data.TrajectoryDataset object.
+
+        :param data: list[np.ndarray].
+            List of trajectories.
+        :return: deeptime.util.data.TrajectoryDataset.
+            Lagged dataset object.
+        """
         data_float32 = list(map(lambda x: x.astype(np.float32), data))
         return TrajectoryDataset.from_trajectories(self.lagtime, data_float32)
 
     def _format_data(self, data, batch_size):
+        """Format list of trajectories into the correct format to fit a TVAE.
+
+        :param data: list[np.ndarray].
+            List of trajectories.
+        :param batch_size: int.
+            Batch size for TVAE fitting.
+        :return: torch.utils.data.dataloader.DataLoader.
+            Data loader to train TVAE.
+        """
         lagged_data = self._lagged_dataset(data)
         loader_train = DataLoader(lagged_data, batch_size=batch_size, shuffle=True)
         return loader_train
 
     def _fit_estimator(self):
+        """Fit TVAE with list of trajectories currently stored in self.data.
+
+        :return: None.
+        """
         loader_train = self._format_data(self.data, self.batch_size)
         self.estimator.fit(loader_train, n_epochs=self.epochs)
 
     def _update_data(self):
+        """Update data with newly saved trajectories.
+
+        :return: None.
+        """
         fnames = self.fhandler.list_all_files()
         new_fnames = []
         for fn in fnames:

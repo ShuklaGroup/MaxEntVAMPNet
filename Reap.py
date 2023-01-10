@@ -1,15 +1,19 @@
+"""Definition of the classes for REAP-like implementations.
+"""
 import os
 
 import dill as pickle
 import numpy as np
 from sklearn.preprocessing import normalize
 
-from AdaptiveSampling import LeastCounts, LeastCountsBis, LeastCountsRegSpace
+from AdaptiveSampling import LeastCountsRegSpace
 from Agent import AgentReap
 from FileHandler import FileHandlerMultiagent
 
 
 class Reap(LeastCountsRegSpace):
+    """This class implements REAP adaptive sampling using RegularSpace clustering.
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -22,6 +26,32 @@ class Reap(LeastCountsRegSpace):
                  n_candidates=50,
                  save_info=False,
                  cluster_args=None):
+        """Constructor for Reap class.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param cv_weights: list[float].
+            Weights for collective variables.
+        :param delta: float in [0, 1].
+            Max change in collective variable weights between rounds.
+        :param n_candidates: int, default = 50.
+            Number of Least Counts candidates to consider in each iteration.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        """
         LeastCountsRegSpace.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
                                      save_rate=save_rate, features=features, save_info=save_info,
                                      cluster_args=cluster_args)
@@ -32,9 +62,11 @@ class Reap(LeastCountsRegSpace):
         self.n_candidates = n_candidates
 
     def _save_logs(self, filename):
-        """
-        Unlike save(), this method does not pickle the entire object, but just a dictionary containing info about the
-        run (without trajectories).
+        """Save logging information of the run.
+
+        :param filename: str.
+            Name of output file.
+        :return: None.
         """
         agent_logs = self.agent.get_log_info()
         logs = dict(
@@ -55,6 +87,10 @@ class Reap(LeastCountsRegSpace):
             pickle.dump(logs, outfile)
 
     def _update_data(self):
+        """Update data with newly saved trajectories.
+
+        :return: None.
+        """
         fnames = self.fhandler.list_all_files()
         new_fnames = []
         for fn in fnames:
@@ -71,6 +107,13 @@ class Reap(LeastCountsRegSpace):
         self._cached_trajs_ordered.extend(new_fnames)
 
     def _select_states(self, n_select):
+        """Select states to restart simulations.
+
+        :param n_select: int.
+            Number of states to select.
+        :return: starting_states_info (list[dict]).
+            List of dicts containing information to read a state (fname, frame_idx, and top_file).
+        """
         least_counts_cluster_indices, candidate_frames_indices = self._find_candidates(self.n_candidates)
         self.states = self.concat_data[candidate_frames_indices]
         self._train_agent()
@@ -85,6 +128,10 @@ class Reap(LeastCountsRegSpace):
         return starting_states_info
 
     def _update_data_agent(self):
+        """Update the data of the (single) agent.
+
+        :return: None.
+        """
         fnames = self.fhandler.list_all_files()
         new_fnames = []
         for fn in fnames:
@@ -94,12 +141,17 @@ class Reap(LeastCountsRegSpace):
         self.agent.set_data(new_data)
 
     def _train_agent(self):
+        """Call agent's train() method.
+
+        :return: None.
+        """
         self.agent.set_states(self.states)
         self.agent.train()
 
 
 class MultiagentReap(Reap):
-
+    """This class implements multiagent REAP adaptive sampling using RegularSpace clustering.
+    """
     def __init__(self,
                  system=None,
                  root="",
@@ -117,6 +169,42 @@ class MultiagentReap(Reap):
                  save_info=False,
                  cluster_args=None
                  ):
+        """Constructor for multiagent Reap class.
+
+        :param system: Simulation object.
+            Object that implements the dynamics to be simulated.
+        :param root: str.
+            Path to root directory where data will be saved.
+        :param basename: str.
+            Basename for saved trajectory files.
+        :param save_format: str, default = ".dcd".
+            Saved format to use for trajectories (not implemented yet).
+        :param save_rate: int, default = 100.
+            Save rate in frames for trajectory files.
+        :param features: list[Callable].
+            List of callables that take a trajectory file as input and return a real number per frame.
+        :param cv_weights: list[float].
+            Weights for collective variables.
+        :param delta: float in [0, 1].
+            Max change in collective variable weights between rounds.
+        :param n_agents: int, default = 1.
+            Number of agents.
+        :param n_candidates: int, default = 50.
+            Number of Least Counts candidates to consider in each iteration.
+        :param stakes_method: str {percentage, equal, logistic}, default = 'percentage'.
+            Method used to compute the stakes of the agent.
+        :param stakes_kwargs: dict.
+            Aguments required to compute stakes.
+            In current implementation, this is only needed when using stakes_method = 'logistic', in which case
+            stakes_kwargs must be defined as {'k': float} where k is the kappa parameter.
+        :param interaction: str {collaborative, noncollaborative, competitive}, default = 'collaborative'.
+            Regime to combine rewards from different agents.
+        :param save_info: Bool, default = False.
+            Save logging info for each trajectory run.
+        :param cluster_args: list[float, int].
+            List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
+            between two centers. max_centers is the maximum number of clusters that can be created.
+        """
         Reap.__init__(self, system=system, root=root, basename=basename, save_format=save_format, save_rate=save_rate,
                       features=features, cv_weights=cv_weights, delta=delta, n_candidates=n_candidates,
                       save_info=save_info, cluster_args=cluster_args)
@@ -139,10 +227,12 @@ class MultiagentReap(Reap):
         self.interaction = interaction
 
     def _save_logs(self, filename):
-        '''
-        Unlike save(), this method does not pickle the entire object, but just a dictionary containing info about the
-        run (without trajectories).
-        '''
+        """Save logging information of the run.
+
+        :param filename: str.
+            Name of output file.
+        :return: None.
+        """
         agent_logs = [a.get_log_info() for a in self.agent]
         logs = dict(
             system=self.system,
@@ -165,6 +255,10 @@ class MultiagentReap(Reap):
             pickle.dump(logs, outfile)
 
     def _update_data(self):
+        """Update data with newly saved trajectories.
+
+        :return: None.
+        """
         fnames = self.fhandler.list_all_files()
         new_fnames = []
         for fn in fnames:
@@ -182,6 +276,12 @@ class MultiagentReap(Reap):
         self._cached_trajs_ordered.extend(new_fnames)
 
     def _update_data_agent(self, agent_idx):
+        """Update the data of the agent indexed by agent_idx.
+
+        :param agent_idx: int.
+            Agent index.
+        :return: None.
+        """
         fnames = self.fhandler.list_agent_files(agent_idx)
         new_fnames = []
         for fn in fnames:
@@ -193,10 +293,16 @@ class MultiagentReap(Reap):
         self._cached_agent_trajs_ordered[agent_idx].extend(new_fnames)
 
     def _compute_stakes(self, cluster_labels):
+        """Compute stakes for agents.
+
+        :param cluster_labels: np.ndarray.
+            Labels indicating cluster membership of each simulation frame.
+        :return: None.
+        """
         num_frames = np.empty((self.n_agents, self.n_candidates))
 
         for n, agent in enumerate(self.agent):
-            data_labels = self._cluster_object.model.transform(agent.data_concat)  # TODO: Speed up by avoiding using predict
+            data_labels = self._cluster_object.model.transform(agent.data_concat)
             for i, label in enumerate(cluster_labels):
                 num_frames[n, i] = len(np.where(data_labels == label)[0])
 
@@ -206,6 +312,10 @@ class MultiagentReap(Reap):
             self._transform_stakes()
 
     def _transform_stakes(self):
+        """Auxiliary function for compute stakes. Only called if using a stakes_method different from 'percentage'.
+
+        :return: None.
+        """
         temp = self.stakes
 
         if self.stakes_method == "equal":
@@ -227,12 +337,21 @@ class MultiagentReap(Reap):
         self.stakes = temp
 
     def _train_agent(self):
+        """ Call train() method in all agents.
+
+        :return: None.
+        """
         for n, agent in enumerate(self.agent):
             agent.set_states(self.states)
             agent.set_stakes(self.stakes[n])
             agent.train()
 
     def _aggregate_scores(self):
+        """Combine rewards from all agents.
+
+        :return: np.ndarray of shape (n_candidates,).
+            Aggregated score for each candidate structure.
+        """
         scores = np.empty((self.n_agents, self.n_candidates))
         for n, agent in enumerate(self.agent):
             scores[n] = agent.score()
@@ -247,6 +366,13 @@ class MultiagentReap(Reap):
         return aggregated_scores
 
     def _select_states(self, n_select):
+        """Select states to restart simulations.
+
+        :param n_select: int.
+            Number of states to select.
+        :return: starting_states_info (list[dict]).
+            List of dicts containing information to read a state (fname, frame_idx, top_file, and agent_idx).
+        """
         least_counts_cluster_indices, candidate_frames_indices = self._find_candidates(self.n_candidates)
         self.states = self.concat_data[candidate_frames_indices]
         self._compute_stakes(least_counts_cluster_indices)
