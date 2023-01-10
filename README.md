@@ -1,4 +1,4 @@
 # MaxEntVAMPNet
-Codes for *Active Learning of the Conformational Ensemble of Proteins using Maximum Entropy VAMPNets*.
+Codes for *Active Learning of the Conformational Ensemble of Proteins using Maximum Entropy VAMPNets* (full citation TBD).
 
-A more thorough description of the codes and examples will be updated soon.
+
