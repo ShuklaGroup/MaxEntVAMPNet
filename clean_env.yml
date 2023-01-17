@@ -1,0 +1,22 @@
+name: maxent
+channels:
+  - salilab
+  - conda-forge
+  - solvationtools
+  - omnia
+  - defaults
+dependencies:
+  - torchvision
+  - pytorch
+  - torchaudio
+  - cudatoolkit=11.6
+  - deeptime
+  - openmm
+  - mdtraj
+  - ipykernel
+  - dill
+  - tqdm
+  - ipywidgets
+  - matplotlib
+  - natsort
+  - numpy
