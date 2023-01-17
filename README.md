@@ -101,7 +101,7 @@ vnet_lobe = MLP(units=[len(features), 512, 256, 128, 64, 32, 16, ndim], nonlinea
 # Initialize adaptive sampling object
 
 adaptive_run = EntropyBasedSampling(system=system,
-                                    root=root,
+                                    root="./",
                                     basename="villin",
                                     save_rate=save_rate,
                                     features=features,
