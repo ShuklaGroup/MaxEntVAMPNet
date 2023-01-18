@@ -2,6 +2,12 @@
 
 Codes for [*Active Learning of the Conformational Ensemble of Proteins using Maximum Entropy VAMPNets*](https://www.biorxiv.org/content/10.1101/2023.01.12.523801v1.full).
 
+![image](https://user-images.githubusercontent.com/24354818/213220326-1c52c0d8-729c-494c-b07a-6bbe7eb6c311.png)
+
+Figure illustrates Shannon entropy maxima occurring at lobe transition interface in the Lorenz system.
+
+Code to generate this figure: https://colab.research.google.com/drive/1lQTe7L1khPvoo5F_8W6IP5JEP5Ikf2CT?usp=sharing
+
 ## Citation
 
 If using the code in this repository, please include the following in your citations:
