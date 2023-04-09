@@ -10,17 +10,7 @@ Code to generate this figure: https://colab.research.google.com/drive/1lQTe7L1kh
 
 ## Citation
 
-If using the code in this repository, please include the following in your citations:
-
-```bibtex
-@article{kleiman2023active,
-  title={Active Learning of the Conformational Ensemble of Proteins using Maximum Entropy VAMPNets},
-  author={Kleiman, Diego E and Shukla, Diwakar},
-  journal={bioRxiv},
-  year={2023},
-  publisher={Cold Spring Harbor Laboratory}
-}
-```
+If using the code in this repository, please include the following in your citations: https://pubs.acs.org/doi/10.1021/acs.jctc.3c00040
 
 ## Environment
 
