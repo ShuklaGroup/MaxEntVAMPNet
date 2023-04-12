@@ -6,17 +6,20 @@ channels:
   - omnia
   - defaults
 dependencies:
-  - torchvision
-  - pytorch
-  - torchaudio
-  - cudatoolkit=11.6
-  - deeptime
-  - openmm
-  - mdtraj
-  - ipykernel
-  - dill
-  - tqdm
-  - ipywidgets
-  - matplotlib
-  - natsort
-  - numpy
+  - anaconda::ipykernel
+  - anaconda::matplotlib
+  - anaconda::natsort
+  - anaconda::numpy
+  - conda-forge::deeptime
+  - conda-forge::dill
+  - conda-forge::ipywidgets
+  - conda-forge::mdtraj
+  - conda-forge::openmm
+  - conda-forge::seaborn
+  - conda-forge::tqdm
+  - nvidia::cudatoolkit=11.7
+  - pytorch::pytorch
+  - pytorch::torchaudio
+  - pytorch::torchvision
+  - jupyter
+prefix: /home/diego/miniconda3/envs/maxent
