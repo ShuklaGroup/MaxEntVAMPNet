@@ -73,7 +73,7 @@ class FileHandler:
         filenames = []
         for subdir in self.subdirs:
             for fname in self.files[subdir]:
-                filenames.append(os.path.join(self.root, subdir, fname))
+                filenames.append(fname)
 
         return filenames
 
