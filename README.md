@@ -1,6 +1,6 @@
 # MaxEntVAMPNet
 
-Codes for [*Active Learning of the Conformational Ensemble of Proteins using Maximum Entropy VAMPNets*](https://www.biorxiv.org/content/10.1101/2023.01.12.523801v1.full).
+Codes for [*Active Learning of the Conformational Ensemble of Proteins using Maximum Entropy VAMPNets*](https://pubs.acs.org/doi/10.1021/acs.jctc.3c00040).
 
 ![image](https://user-images.githubusercontent.com/24354818/213220326-1c52c0d8-729c-494c-b07a-6bbe7eb6c311.png)
 
