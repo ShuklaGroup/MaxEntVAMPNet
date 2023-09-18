@@ -21,7 +21,7 @@ The `clean_env.yml` file can be used with `conda` to recreate the environment us
 However, solving this environment with conda can take a very long time. For this reason, we suggest starting from a conda environment with a working installation of [pytorch](https://pytorch.org/get-started/locally/) and then installing the remaining packages listed in the `.yml` file:
 
 ```
-conda env create -n maxent # Create a new environment 
+conda create -n maxent # Create a new environment 
 conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia # Installs pytorch in the current conda env (valid as of Apr 2023)
 conda install -c conda-forge deeptime dill mdtraj openmm seaborn tqdm
 ```
