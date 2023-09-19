@@ -41,7 +41,7 @@ class AgentReap(Agent):
     """Agent class for REAP or MA REAP simulations.
     """
 
-    def __init__(self, cv_weights, delta, data=None):
+    def __init__(self, cv_weights=None, delta=None, data=None, logs=None):
         """Constructor for AgentReap.
 
         :param cv_weights: list[float].
@@ -51,21 +51,24 @@ class AgentReap(Agent):
         :param data: list[np.ndarray].
             Initial trajectory data for agent. Not necessary.
         """
-        assert (np.allclose(sum(cv_weights), 1))  # CV weights must add up to 1
-        assert (0 <= delta <= 1)  # delta must be between 0 and 1
-        self.cv_weights = cv_weights
-        self.delta = delta
-        self.cv_num = len(cv_weights)
-        self.data = data
-        self.data_concat = None
-        self.means = None
-        self.stdev = None
-        if self.data is not None:
-            self.data_concat = np.concatenate(data, axis=0)
-            self.means = self.data_concat.mean(axis=0)
-            self.stdev = self.data_concat.std(axis=0)
-        self.states = None
-        self.stakes = None
+        if logs is None:
+            assert (np.allclose(sum(cv_weights), 1))  # CV weights must add up to 1
+            assert (0 <= delta <= 1)  # delta must be between 0 and 1
+            self.cv_weights = cv_weights
+            self.delta = delta
+            self.cv_num = len(cv_weights)
+            self.data = data
+            self.data_concat = None
+            self.means = None
+            self.stdev = None
+            if self.data is not None:
+                self.data_concat = np.concatenate(data, axis=0)
+                self.means = self.data_concat.mean(axis=0)
+                self.stdev = self.data_concat.std(axis=0)
+            self.states = None
+            self.stakes = None
+        elif isinstance(logs, dict):
+            self._reload(logs)
 
     def get_log_info(self):
         """Returns a dictionary with certain object attributes for logging purposes.
@@ -85,6 +88,16 @@ class AgentReap(Agent):
         )
 
         return logs
+
+    def _reload(self, logs):
+        self.cv_weights = logs['cv_weights']
+        self.delta = logs['delta']
+        self.cv_num = logs['cv_num']
+        self.means = logs['means']
+        self.stdev = logs['stdev']
+        self.states = logs['states']
+        self.stakes = logs['stakes']
+        self.scores = logs['scores']
 
     def set_data(self, data):
         """Set data (trajectories) for the agent.
