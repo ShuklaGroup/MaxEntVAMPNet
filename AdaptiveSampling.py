@@ -25,12 +25,13 @@ from FileHandler import FileHandler
 class AdaptiveSampling(ABC):
     """Abstract class for adaptive sampling object.
     """
+
     def __init__(self):
         pass
 
-    # @abstractmethod
-    # def reload(self):
-    #     pass
+    @abstractmethod
+    def _reload(self):
+        pass
 
     @abstractmethod
     def define_cvs(self):
@@ -56,6 +57,7 @@ class AdaptiveSampling(ABC):
 class LeastCounts(AdaptiveSampling):
     """This class implements Least Counts adaptive sampling using KMeans clustering.
     """
+
     def __init__(self,
                  system=None,
                  root="",
@@ -64,7 +66,8 @@ class LeastCounts(AdaptiveSampling):
                  save_rate=100,
                  features=None,
                  save_info=False,
-                 cluster_args=None):
+                 cluster_args=None,
+                 log_file=None):
         """LeastCounts constructor.
 
         :param system: Simulation object.
@@ -84,6 +87,8 @@ class LeastCounts(AdaptiveSampling):
         :param cluster_args: list[float, float, int].
             List of parameters for MiniBatchKMeans clustering (gamma, b, batch_size). Gamma and b affect the number of
             clusters utilized, while batch_size is the number of samples to use per mini-batch.
+        :param log_file: str.
+            Path to log_file. Passing this argument will supersede all other parameters.
         """
         self.system = system
         self.fhandler = FileHandler(root, basename, save_format)
@@ -102,6 +107,8 @@ class LeastCounts(AdaptiveSampling):
             self.cluster_args = [2e-3, 0.7, 10000]  # Depends on clustering algorithm --> This is (gamma, b, batch_size)
         else:
             self.cluster_args = cluster_args
+        if isinstance(log_file, str):
+            self._reload(log_file)
 
     def save(self, path):
         """Saves the object serialized with dill (similar to pickle).
@@ -128,12 +135,41 @@ class LeastCounts(AdaptiveSampling):
             n_round=self.n_round,
             features=self.features,
             n_features=self.n_features,
+            cluster_args=self.cluster_args,
+            cluster_object=self._cluster_object,
             states=self.states,
         )
         root_dir = self.fhandler.root
         path = os.path.join(root_dir, filename)
         with open(path, "wb") as outfile:
             pickle.dump(logs, outfile)
+
+    def _reload(self, log_file):
+        """Reset simulation object to state in log_file. Called in constructor.
+
+        For this method to work, trajectories should be found where self.fhandler expects them.
+
+        :param log_file: str.
+            Path to log file.
+        """
+        with open(log_file, "rb") as infile:
+            logs = pickle.load(infile)
+        self.system = logs['system']
+        self.fhandler = logs['fhandler']
+        self.save_rate = logs['save_rate']
+        self.n_round = logs['n_round']
+        self.features = logs['features']
+        self.n_features = logs['n_features']
+        self.cluster_args = logs['cluster_args']
+        self._cluster_object = logs['cluster_object']
+        self.states = logs['states']
+        self.save_info = True  # If loading from log file, assume that log files are required
+        self.data = None
+        self.concat_data = None
+        self._cached_trajs = set()
+        self._cached_trajs_ordered = []
+        self._cluster_object = None
+        self._update_data()
 
     # TODO: Define subsample function to use every time the total number of frames surpasses threshold.
 
@@ -251,7 +287,10 @@ class LeastCounts(AdaptiveSampling):
         :return: None.
         """
         starting_states_info = self._select_states(n_select)
-        fnames = self.fhandler.generate_new_round(starting_states_info, n_repeats, n_steps, self.n_round,
+        fnames = self.fhandler.generate_new_round(starting_states_info,
+                                                  n_repeats,
+                                                  n_steps,
+                                                  self.n_round,
                                                   self.save_rate)
         for fname in fnames:
             state = self.fhandler.init_states[fname]
@@ -304,7 +343,8 @@ class LeastCountsRegSpace(LeastCounts):
                  save_rate=100,
                  features=None,
                  save_info=False,
-                 cluster_args=None):
+                 cluster_args=None,
+                 log_file=None):
         """Constructor for LeastCountsRegSpace.
 
         :param system: Simulation object.
@@ -324,13 +364,23 @@ class LeastCountsRegSpace(LeastCounts):
         :param cluster_args: list[float, int].
             List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
             between two centers. max_centers is the maximum number of clusters that can be created.
+        :param log_file: str.
+            Path to log_file. Passing this argument will supersede all other parameters.
         """
-        LeastCounts.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
-                             save_rate=save_rate, features=features, save_info=save_info)
-        if cluster_args is None:
-            self.cluster_args = [1e-3, 10000]  # Depends on clustering algorithm --> This is (dmin, max_centers)
-        else:
-            self.cluster_args = cluster_args
+        LeastCounts.__init__(self,
+                             system=system,
+                             root=root,
+                             basename=basename,
+                             save_format=save_format,
+                             save_rate=save_rate,
+                             features=features,
+                             save_info=save_info,
+                             log_file=log_file)
+        if log_file is None:
+            if cluster_args is None:
+                self.cluster_args = [1e-3, 10000]  # Depends on clustering algorithm --> This is (dmin, max_centers)
+            else:
+                self.cluster_args = cluster_args
 
     def _cluster(self, min_clusters):
         """Perform clustering using BisectingKMeans.
@@ -367,6 +417,7 @@ class VampLeastCounts(LeastCountsRegSpace):
     """This class implements Least Counts adaptive sampling using RegularSpace clustering in combination with VAMP
     from the deeptime package.
     """
+
     def __init__(self,
                  system=None,
                  root="",
@@ -379,6 +430,7 @@ class VampLeastCounts(LeastCountsRegSpace):
                  ndim=2,
                  lagtime=1,
                  propagation_steps=1,
+                 log_file=None,
                  ):
         """Constructor for VampLeastCounts.
 
@@ -405,15 +457,85 @@ class VampLeastCounts(LeastCountsRegSpace):
             Lag time expressed as number of frames.
         :param propagation_steps: int, default = 1.
             This option allows to apply the Koopman operator propagation_steps times to the input conformation.
+        :param log_file: str.
+            Path to log_file. Passing this argument will supersede all other parameters.
         """
-        LeastCountsRegSpace.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
-                                     save_rate=save_rate, features=features, save_info=save_info,
-                                     cluster_args=cluster_args)
-        self.ndim = ndim
-        self.lagtime = lagtime
-        self.propagation_steps = propagation_steps
-        self.estimator = VAMP(lagtime=self.lagtime, dim=self.ndim, epsilon=1e-18)  # Epsilon is set to a low
-        # number to prevent errors, but this may result in poor quality models.
+        LeastCountsRegSpace.__init__(self,
+                                     system=system,
+                                     root=root,
+                                     basename=basename,
+                                     save_format=save_format,
+                                     save_rate=save_rate,
+                                     features=features,
+                                     save_info=save_info,
+                                     cluster_args=cluster_args
+                                     )
+        if log_file is None:
+            self.ndim = ndim
+            self.lagtime = lagtime
+            self.propagation_steps = propagation_steps
+            self.estimator = VAMP(lagtime=self.lagtime, dim=self.ndim, epsilon=1e-18)  # Epsilon is set to a low
+            # number to prevent errors, but this may result in poor quality models.
+        elif isinstance(log_file, str):
+            self._reload(log_file)
+
+    def _save_logs(self, filename):
+        """Save logging information of the run.
+
+        :param filename: str.
+            Name of output file.
+        :return: None.
+        """
+        logs = dict(
+            system=self.system,
+            fhandler=self.fhandler,
+            save_rate=self.save_rate,
+            n_round=self.n_round,
+            features=self.features,
+            n_features=self.n_features,
+            cluster_args=self.cluster_args,
+            cluster_object=self._cluster_object,
+            states=self.states,
+            ndim=self.ndim,
+            lagtime=self.lagtime,
+            propagation_steps=self.propagation_steps,
+            estimator=self.estimator,
+        )
+        root_dir = self.fhandler.root
+        path = os.path.join(root_dir, filename)
+        with open(path, "wb") as outfile:
+            pickle.dump(logs, outfile)
+
+    def _reload(self, log_file):
+        """Reset simulation object to state in log_file. Called in constructor.
+
+        For this method to work, trajectories should be found where self.fhandler expects them.
+
+        :param log_file: str.
+            Path to log file.
+        """
+        with open(log_file, "rb") as infile:
+            logs = pickle.load(infile)
+        self.system = logs['system']
+        self.fhandler = logs['fhandler']
+        self.save_rate = logs['save_rate']
+        self.n_round = logs['n_round']
+        self.features = logs['features']
+        self.n_features = logs['n_features']
+        self.cluster_args = logs['cluster_args']
+        self._cluster_object = logs['cluster_object']
+        self.states = logs['states']
+        self.ndim = logs['ndim']
+        self.lagtime = logs['lagtime']
+        self.propagation_steps = logs['propagation_steps']
+        self.estimator = logs['estimator']
+        self.save_info = True  # If loading from log file, assume that log files are required
+        self.data = None
+        self.concat_data = None
+        self._cached_trajs = set()
+        self._cached_trajs_ordered = []
+        self._cluster_object = None
+        self._update_data()
 
     def _update_data(self):
         """Update data with newly saved trajectories.
@@ -437,33 +559,12 @@ class VampLeastCounts(LeastCountsRegSpace):
         propagated = inst_obs @ (model.operator ** self.propagation_steps)[:self.ndim, :self.ndim]
         return propagated
 
-    def _save_logs(self, filename):
-        """Save logging information of the run.
-
-        :param filename: str.
-            Name of output file.
-        :return: None.
-        """
-        logs = dict(
-            system=self.system,
-            fhandler=self.fhandler,
-            save_rate=self.save_rate,
-            n_round=self.n_round,
-            features=self.features,
-            n_features=self.n_features,
-            states=self.states,
-            estimator=self.estimator,
-        )
-        root_dir = self.fhandler.root
-        path = os.path.join(root_dir, filename)
-        with open(path, "wb") as outfile:
-            pickle.dump(logs, outfile)
-
 
 class VampNetLeastCounts(VampLeastCounts):
     """This class implements Least Counts adaptive sampling using RegularSpace clustering in combination with VAMPNets
     from the deeptime package.
     """
+
     def __init__(self,
                  system=None,
                  root="",
@@ -480,7 +581,9 @@ class VampNetLeastCounts(VampLeastCounts):
                  vnet_learning_rate=1e-4,
                  vnet_batch_size=64,
                  vnet_epochs=100,
-                 vnet_num_threads=1,):
+                 vnet_num_threads=1,
+                 log_file=None,
+                 ):
         """Constructor for VampNetLeastCounts.
 
         :param system: Simulation object.
@@ -516,17 +619,97 @@ class VampNetLeastCounts(VampLeastCounts):
             Number of training epochs per adaptive sampling round.
         :param vnet_num_threads: int, default = 1.
             Number of threads available for VAMPNet fitting.
+        :param log_file: str.
+            Path to log_file. Passing this argument will supersede all other parameters.
         """
-        VampLeastCounts.__init__(self, system, root, basename, save_format, save_rate, features, save_info,
-                                 cluster_args, ndim, lagtime)
-        self.batch_size = vnet_batch_size
-        self.epochs = vnet_epochs
-        self._set_device(device, vnet_num_threads)
-        if vnet_lobe is None:
-            vnet_lobe = MLP(units=[self.n_features, 15, 10, 10, 5, self.ndim],
-                            nonlinearity=nn.ReLU)  # A default model
-        vnet_lobe = vnet_lobe.to(self.device)
-        self.estimator = VAMPNet(lobe=vnet_lobe, learning_rate=vnet_learning_rate, device=self.device)
+        VampLeastCounts.__init__(self,
+                                 system=system,
+                                 root=root,
+                                 basename=basename,
+                                 save_format=save_format,
+                                 save_rate=save_rate,
+                                 features=features,
+                                 save_info=save_info,
+                                 cluster_args=cluster_args,
+                                 ndim=ndim,
+                                 lagtime=lagtime)
+        if log_file is None:
+            self.batch_size = vnet_batch_size
+            self.epochs = vnet_epochs
+            self.device_name = device
+            self.vnet_num_threads = vnet_num_threads
+            self._set_device(device, vnet_num_threads)
+            if vnet_lobe is None:
+                vnet_lobe = MLP(units=[self.n_features, 15, 10, 10, 5, self.ndim],
+                                nonlinearity=nn.ReLU)  # A default model
+            vnet_lobe = vnet_lobe.to(self.device)
+            self.estimator = VAMPNet(lobe=vnet_lobe, learning_rate=vnet_learning_rate, device=self.device)
+        elif isinstance(log_file, str):
+            self._reload(log_file)
+
+    def _save_logs(self, filename):
+        """Save logging information of the run.
+
+        :param filename: str.
+            Name of output file.
+        :return: None.
+        """
+        logs = dict(
+            system=self.system,
+            fhandler=self.fhandler,
+            save_rate=self.save_rate,
+            n_round=self.n_round,
+            features=self.features,
+            n_features=self.n_features,
+            cluster_args=self.cluster_args,
+            cluster_object=self._cluster_object,
+            states=self.states,
+            ndim=self.ndim,
+            lagtime=self.lagtime,
+            device=self.device,
+            batch_size=self.batch_size,
+            epochs=self.epochs,
+            device_name=self.device_name,
+            vnet_num_threads=self.vnet_num_threads,
+            estimator=self.estimator,
+        )
+        root_dir = self.fhandler.root
+        path = os.path.join(root_dir, filename)
+        with open(path, "wb") as outfile:
+            pickle.dump(logs, outfile)
+
+    def _reload(self, log_file):
+        """Reset simulation object to state in log_file. Called in constructor.
+
+        For this method to work, trajectories should be found where self.fhandler expects them.
+
+        :param log_file: str.
+            Path to log file.
+        """
+        with open(log_file, "rb") as infile:
+            logs = pickle.load(infile)
+        self.system = logs['system']
+        self.fhandler = logs['fhandler']
+        self.save_rate = logs['save_rate']
+        self.n_round = logs['n_round']
+        self.features = logs['features']
+        self.n_features = logs['n_features']
+        self.cluster_args = logs['cluster_args']
+        self._cluster_object = logs['cluster_object']
+        self.states = logs['states']
+        self.ndim = logs['ndim']
+        self.lagtime = logs['lagtime']
+        self.device_name = logs['device_name']
+        self.vnet_num_threads = logs['vnet_num_threads']
+        self._set_device(self.device_name, self.vnet_num_threads)
+        self.estimator = logs['estimator']
+        self.save_info = True  # If loading from log file, assume that log files are required
+        self.data = None
+        self.concat_data = None
+        self._cached_trajs = set()
+        self._cached_trajs_ordered = []
+        self._cluster_object = None
+        self._update_data()
 
     def _set_device(self, device, num_threads):
         """Set the device for VAMPNet training.
@@ -615,6 +798,7 @@ class VaeLeastCounts(VampLeastCounts):
     from the deeptime package.
 
     """
+
     def __init__(self,
                  system=None,
                  root="",
@@ -632,7 +816,8 @@ class VaeLeastCounts(VampLeastCounts):
                  tvae_learning_rate=1e-4,
                  tvae_batch_size=64,
                  tvae_epochs=100,
-                 tvae_num_threads=1, ):
+                 tvae_num_threads=1,
+                 ):
         """Constructor for VaeLeastCounts.
 
         :param system: Simulation object.
