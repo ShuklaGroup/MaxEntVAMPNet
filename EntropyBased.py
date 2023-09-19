@@ -22,21 +22,21 @@ class EntropyBasedSampling(LeastCountsRegSpace):
                  system=None,
                  root="",
                  basename="",
-                 save_format='.dcd',
+                 save_format=".dcd",
                  save_rate=100,
                  features=None,
                  n_candidates=None,
                  save_info=False,
                  cluster_args=None,
                  lagtime=1,
-                 device="cuda",
+                 device="cpu",
                  vnet_lobe=None,
                  vnet_learning_rate=1e-4,
                  vnet_batch_size=2048,
                  vnet_epochs=100,
                  vnet_num_threads=1,
                  vnet_output_states=None,
-                 ):
+                 log_file=None):
         """Constructor for EntropyBasedSampling.
 
         :param system: Simulation object.
@@ -72,25 +72,90 @@ class EntropyBasedSampling(LeastCountsRegSpace):
         :param vnet_output_states: int.
             NUmber of output dimensions for VAMPNet. This parameter replaces ndim in other classes.
         """
-        LeastCountsRegSpace.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
-                                     save_rate=save_rate, features=features, save_info=save_info,
+        LeastCountsRegSpace.__init__(self,
+                                     system=system,
+                                     root=root,
+                                     basename=basename,
+                                     save_format=save_format,
+                                     save_rate=save_rate,
+                                     features=features,
+                                     save_info=save_info,
                                      cluster_args=cluster_args)
-        self.n_candidates = n_candidates
-        self.lagtime = lagtime
-        self.n_features = len(features)
-        self.n_agents = 1  # Single agent version
-        self.batch_size = vnet_batch_size
-        self.epochs = vnet_epochs
-        self._set_device(device, vnet_num_threads)
-        self.output_states = vnet_output_states if vnet_output_states is not None else self.n_features
-        # Set estimator
-        if vnet_lobe is None:
-            vnet_lobe = MLP(units=[self.n_features, 16, 32, 64, 128, 256, 128, 64, 32, 16, self.output_states],
-                            nonlinearity=nn.ReLU,
-                            output_nonlinearity=nn.Softmax)  # A default model
-        vnet_lobe = vnet_lobe.to(self.device)
-        self.estimator = VAMPNet(lobe=vnet_lobe, learning_rate=vnet_learning_rate, device=self.device, epsilon=1e-12)
-        self.agent = EntropyBasedAgent(self.estimator)
+        if log_file is None:
+            self.n_candidates = n_candidates
+            self.lagtime = lagtime
+            self.n_features = len(features)
+            self.n_agents = 1  # Single agent version
+            self.batch_size = vnet_batch_size
+            self.epochs = vnet_epochs
+            self.device_name = device,
+            self.vnet_num_threads = vnet_num_threads
+            self._set_device(device, vnet_num_threads)
+            self.output_states = vnet_output_states if vnet_output_states is not None else self.n_features
+            # Set estimator
+            if vnet_lobe is None:
+                vnet_lobe = MLP(units=[self.n_features, 16, 32, 64, 128, 256, 128, 64, 32, 16, self.output_states],
+                                nonlinearity=nn.ReLU,
+                                output_nonlinearity=nn.Softmax)  # A default model
+            vnet_lobe = vnet_lobe.to(self.device)
+            self.estimator = VAMPNet(lobe=vnet_lobe, learning_rate=vnet_learning_rate, device=self.device, epsilon=1e-12)
+            self.agent = EntropyBasedAgent(self.estimator)
+        elif isinstance(log_file, str):
+            self._reload(log_file)
+
+    def _save_logs(self, filename):
+        """Save logging information of the run.
+
+        :param filename: str.
+            Name of output file.
+        :return: None.
+        """
+        agent_logs = self.agent.get_log_info()
+        logs = dict(
+            system=self.system,
+            fhandler=self.fhandler,
+            save_rate=self.save_rate,
+            n_round=self.n_round,
+            features=self.features,
+            n_features=self.n_features,
+            states=self.states,
+            n_agents=self.n_agents,
+            n_candidates=self.n_candidates,
+            lagtime=self.lagtime,
+            batch_size=self.batch_size,
+            epochs=self.epochs,
+            device_name=self.device_name,
+            vnet_num_threads=self.vnet_num_threads,
+            output_states=self.output_states,
+            estimator=self.estimator,
+            agent_logs=agent_logs,
+        )
+        root_dir = self.fhandler.root
+        path = os.path.join(root_dir, filename)
+        with open(path, "wb") as outfile:
+            pickle.dump(logs, outfile)
+
+    def _reload(self, log_file):
+        with open(log_file, "rb") as infile:
+            logs = pickle.load(infile)
+        self.system = logs['system']
+        self.fhandler = logs['fhandler']
+        self.save_rate = logs['save_rate']
+        self.n_round = logs['n_round']
+        self.features = logs['features']
+        self.n_features = logs['n_features']
+        self.states = logs['states']
+        self.n_agents = logs['n_agents']
+        self.n_candidates = logs['n_candidates']
+        self.lagtime = logs['lagtime']
+        self.agent = EntropyBasedAgent(logs=logs['agent_logs'])
+        self.save_info = True  # If loading from log file, assume that log files are required
+        self.data = None
+        self.concat_data = None
+        self._cached_trajs = set()
+        self._cached_trajs_ordered = []
+        self._cluster_object = None
+        self._update_data()
 
     def _set_device(self, device, num_threads):
         """Set the device for VAMPNet training.
@@ -153,31 +218,6 @@ class EntropyBasedSampling(LeastCountsRegSpace):
         loader_train = DataLoader(train_data, batch_size=batch_size, shuffle=True)
         loader_val = DataLoader(val_data, batch_size=batch_size, shuffle=False)
         return loader_train, loader_val
-
-    def _save_logs(self, filename):
-        """Save logging information of the run.
-
-        :param filename: str.
-            Name of output file.
-        :return: None.
-        """
-        agent_logs = self.agent.get_log_info()
-        logs = dict(
-            system=self.system,
-            fhandler=self.fhandler,
-            save_rate=self.save_rate,
-            n_round=self.n_round,
-            features=self.features,
-            n_features=self.n_features,
-            states=self.states,
-            n_agents=self.n_agents,
-            n_candidates=self.n_candidates,
-            agent_logs=agent_logs,
-        )
-        root_dir = self.fhandler.root
-        path = os.path.join(root_dir, filename)
-        with open(path, "wb") as outfile:
-            pickle.dump(logs, outfile)
 
     def _select_states(self, n_select):
 

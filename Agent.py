@@ -97,7 +97,6 @@ class AgentReap(Agent):
         self.stdev = logs['stdev']
         self.states = logs['states']
         self.stakes = logs['stakes']
-        self.scores = logs['scores']
 
     def set_data(self, data):
         """Set data (trajectories) for the agent.
@@ -307,7 +306,7 @@ class EntropyBasedAgent(Agent):
     """Agent class for VAMPNet + MaxEnt simulations.
     """
 
-    def __init__(self, estimator, data=None):
+    def __init__(self, estimator=None, logs=None, data=None):
         """Constructor for EntropyBasedAgent.
 
         :param estimator: deeptime.util.torch.MLP.
@@ -315,14 +314,17 @@ class EntropyBasedAgent(Agent):
         :param data: list[np.ndarray].
             Initial trajectory data for agent. Not necessary.
         """
-        self.estimator = estimator
-        self.data = data
-        self.data_concat = None
-        self.transformed_data = None
-        if self.data is not None:
-            self.data_concat = np.concatenate(data, axis=0)
-            self.transformed_data = estimator.model.transform(self.data_concat)
-        self.states = self.transformed_data
+        if logs is None:
+            self.estimator = estimator
+            self.data = data
+            self.data_concat = None
+            self.transformed_data = None
+            if self.data is not None:
+                self.data_concat = np.concatenate(data, axis=0)
+                self.transformed_data = estimator.model.transform(self.data_concat)
+            self.states = self.transformed_data
+        elif isinstance(logs, dict):
+            self._reload(logs)
 
     def get_log_info(self):
         """Returns a dictionary with certain object attributes for logging purposes.
@@ -336,6 +338,9 @@ class EntropyBasedAgent(Agent):
         )
 
         return logs
+
+    def _reload(self, logs):
+        self.estimator = logs['estimator']
 
     def set_data(self, data):
         """Set data (trajectories) for the agent.
