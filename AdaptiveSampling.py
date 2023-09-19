@@ -430,8 +430,7 @@ class VampLeastCounts(LeastCountsRegSpace):
                  ndim=2,
                  lagtime=1,
                  propagation_steps=1,
-                 log_file=None,
-                 ):
+                 log_file=None):
         """Constructor for VampLeastCounts.
 
         :param system: Simulation object.
@@ -582,8 +581,7 @@ class VampNetLeastCounts(VampLeastCounts):
                  vnet_batch_size=64,
                  vnet_epochs=100,
                  vnet_num_threads=1,
-                 log_file=None,
-                 ):
+                 log_file=None):
         """Constructor for VampNetLeastCounts.
 
         :param system: Simulation object.
@@ -816,8 +814,7 @@ class VaeLeastCounts(VampLeastCounts):
                  tvae_batch_size=64,
                  tvae_epochs=100,
                  tvae_num_threads=1,
-                 log_file=None,
-                 ):
+                 log_file=None):
         """Constructor for VaeLeastCounts.
 
         :param system: Simulation object.
