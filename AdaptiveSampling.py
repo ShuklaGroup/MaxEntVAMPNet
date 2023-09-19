@@ -666,7 +666,6 @@ class VampNetLeastCounts(VampLeastCounts):
             states=self.states,
             ndim=self.ndim,
             lagtime=self.lagtime,
-            device=self.device,
             batch_size=self.batch_size,
             epochs=self.epochs,
             device_name=self.device_name,
@@ -817,6 +816,7 @@ class VaeLeastCounts(VampLeastCounts):
                  tvae_batch_size=64,
                  tvae_epochs=100,
                  tvae_num_threads=1,
+                 log_file=None,
                  ):
         """Constructor for VaeLeastCounts.
 
@@ -855,22 +855,100 @@ class VaeLeastCounts(VampLeastCounts):
             Number of training epochs per adaptive sampling round.
         :param tvae_num_threads: int, default = 1.
             Number of threads available for TVAE fitting.
+        :param log_file: str.
+            Path to log_file. Passing this argument will supersede all other parameters.
         """
-        VampLeastCounts.__init__(self, system, root, basename, save_format, save_rate, features, save_info,
-                                 cluster_args, ndim, lagtime)
-        self.batch_size = tvae_batch_size
-        self.epochs = tvae_epochs
-        self._set_device(device, tvae_num_threads)
-        # Set estimator
-        if tvae_encoder is None:
-            tvae_encoder = TVAEEncoder([self.n_features, 15, 10, 10, 5, self.ndim],
-                                       nonlinearity=torch.nn.ReLU)  # A default encoder
-        if tvae_decoder is None:
-            tvae_decoder = MLP([self.ndim, 5, 10, 10, 15, self.n_features], nonlinearity=torch.nn.ReLU,
-                               initial_batchnorm=False)  # A default decoder
-        tvae_encoder = tvae_encoder.to(self.device)
-        tvae_decoder = tvae_decoder.to(self.device)
-        self.estimator = TVAE(tvae_encoder, tvae_decoder, learning_rate=tvae_learning_rate)
+        VampLeastCounts.__init__(self,
+                                 system=system,
+                                 root=root,
+                                 basename=basename,
+                                 save_format=save_format,
+                                 save_rate=save_rate,
+                                 features=features,
+                                 save_info=save_info,
+                                 cluster_args=cluster_args,
+                                 ndim=ndim,
+                                 lagtime=lagtime)
+        if log_file is None:
+            self.batch_size = tvae_batch_size
+            self.epochs = tvae_epochs
+            self._set_device(device, tvae_num_threads)
+            # Set estimator
+            if tvae_encoder is None:
+                tvae_encoder = TVAEEncoder([self.n_features, 15, 10, 10, 5, self.ndim],
+                                           nonlinearity=torch.nn.ReLU)  # A default encoder
+            if tvae_decoder is None:
+                tvae_decoder = MLP([self.ndim, 5, 10, 10, 15, self.n_features], nonlinearity=torch.nn.ReLU,
+                                   initial_batchnorm=False)  # A default decoder
+            tvae_encoder = tvae_encoder.to(self.device)
+            tvae_decoder = tvae_decoder.to(self.device)
+            self.estimator = TVAE(tvae_encoder, tvae_decoder, learning_rate=tvae_learning_rate)
+        elif isinstance(log_file, str):
+            self._reload(log_file)
+
+    def _save_logs(self, filename):
+        """Save logging information of the run.
+
+        :param filename: str.
+            Name of output file.
+        :return: None.
+        """
+        logs = dict(
+            system=self.system,
+            fhandler=self.fhandler,
+            save_rate=self.save_rate,
+            n_round=self.n_round,
+            features=self.features,
+            n_features=self.n_features,
+            cluster_args=self.cluster_args,
+            cluster_object=self._cluster_object,
+            states=self.states,
+            ndim=self.ndim,
+            lagtime=self.lagtime,
+            device=self.device,
+            batch_size=self.batch_size,
+            epochs=self.epochs,
+            device_name=self.device_name,
+            tvae_num_threads=self.tvae_num_threads,
+            estimator=self.estimator,
+        )
+        root_dir = self.fhandler.root
+        path = os.path.join(root_dir, filename)
+        with open(path, "wb") as outfile:
+            pickle.dump(logs, outfile)
+
+    def _reload(self, log_file):
+        """Reset simulation object to state in log_file. Called in constructor.
+
+        For this method to work, trajectories should be found where self.fhandler expects them.
+
+        :param log_file: str.
+            Path to log file.
+        """
+        with open(log_file, "rb") as infile:
+            logs = pickle.load(infile)
+        self.system = logs['system']
+        self.fhandler = logs['fhandler']
+        self.save_rate = logs['save_rate']
+        self.n_round = logs['n_round']
+        self.features = logs['features']
+        self.n_features = logs['n_features']
+        self.cluster_args = logs['cluster_args']
+        self._cluster_object = logs['cluster_object']
+        self.states = logs['states']
+        self.ndim = logs['ndim']
+        self.lagtime = logs['lagtime']
+        self.device_name = logs['device_name']
+        self.tvae_num_threads = logs['tvae_num_threads']
+        self._set_device(self.device_name, self.tvae_num_threads)
+        self.estimator = logs['estimator']
+        self.save_info = True  # If loading from log file, assume that log files are required
+        self.data = None
+        self.concat_data = None
+        self._cached_trajs = set()
+        self._cached_trajs_ordered = []
+        self._cluster_object = None
+        self._update_data()
 
     def _set_device(self, device, num_threads):
         """Set the device for VAMPNet training.
