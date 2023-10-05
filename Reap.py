@@ -14,6 +14,7 @@ from FileHandler import FileHandlerMultiagent
 class Reap(LeastCountsRegSpace):
     """This class implements REAP adaptive sampling using RegularSpace clustering.
     """
+
     def __init__(self,
                  system=None,
                  root="",
@@ -25,7 +26,8 @@ class Reap(LeastCountsRegSpace):
                  delta=0.05,
                  n_candidates=50,
                  save_info=False,
-                 cluster_args=None):
+                 cluster_args=None,
+                 log_file=None):
         """Constructor for Reap class.
 
         :param system: Simulation object.
@@ -51,15 +53,26 @@ class Reap(LeastCountsRegSpace):
         :param cluster_args: list[float, int].
             List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
             between two centers. max_centers is the maximum number of clusters that can be created.
+        :param log_file: str.
+            Path to log_file. Passing this argument will supersede all other parameters.
         """
-        LeastCountsRegSpace.__init__(self, system=system, root=root, basename=basename, save_format=save_format,
-                                     save_rate=save_rate, features=features, save_info=save_info,
+        LeastCountsRegSpace.__init__(self,
+                                     system=system,
+                                     root=root,
+                                     basename=basename,
+                                     save_format=save_format,
+                                     save_rate=save_rate,
+                                     features=features,
+                                     save_info=save_info,
                                      cluster_args=cluster_args)
-        self.n_agents = 1  # Single agent version
-        if cv_weights is None:
-            cv_weights = [1 / self.n_features for _ in range(self.n_features)]
-        self.agent = AgentReap(cv_weights, delta)
-        self.n_candidates = n_candidates
+        if log_file is None:
+            self.n_agents = 1  # Single agent version
+            if cv_weights is None:
+                cv_weights = [1 / self.n_features for _ in range(self.n_features)]
+            self.agent = AgentReap(cv_weights=cv_weights, delta=delta)
+            self.n_candidates = n_candidates
+        elif isinstance(log_file, str):
+            self._reload(log_file)
 
     def _save_logs(self, filename):
         """Save logging information of the run.
@@ -76,6 +89,8 @@ class Reap(LeastCountsRegSpace):
             n_round=self.n_round,
             features=self.features,
             n_features=self.n_features,
+            cluster_args=self.cluster_args,
+            cluster_object=self._cluster_object,
             states=self.states,
             n_agents=self.n_agents,
             n_candidates=self.n_candidates,
@@ -85,6 +100,36 @@ class Reap(LeastCountsRegSpace):
         path = os.path.join(root_dir, filename)
         with open(path, "wb") as outfile:
             pickle.dump(logs, outfile)
+
+    def _reload(self, log_file):
+        """Reset simulation object to state in log_file. Called in constructor.
+
+        For this method to work, trajectories should be found where self.fhandler expects them.
+
+        :param log_file: str.
+            Path to log file.
+        """
+        with open(log_file, "rb") as infile:
+            logs = pickle.load(infile)
+        self.system = logs['system']
+        self.fhandler = logs['fhandler']
+        self.save_rate = logs['save_rate']
+        self.n_round = logs['n_round']
+        self.features = logs['features']
+        self.n_features = logs['n_features']
+        self.cluster_args = logs['cluster_args']
+        self._cluster_object = logs['cluster_object']
+        self.states = logs['states']
+        self.n_agents = logs['n_agents']
+        self.n_candidates = logs['n_candidates']
+        self.agent = AgentReap(logs=logs['agent_logs'])
+        self.save_info = True  # If loading from log file, assume that log files are required
+        self.data = None
+        self.concat_data = None
+        self._cached_trajs = set()
+        self._cached_trajs_ordered = []
+        self._cluster_object = None
+        self._update_data()
 
     def _update_data(self):
         """Update data with newly saved trajectories.
@@ -152,6 +197,7 @@ class Reap(LeastCountsRegSpace):
 class MultiagentReap(Reap):
     """This class implements multiagent REAP adaptive sampling using RegularSpace clustering.
     """
+
     def __init__(self,
                  system=None,
                  root="",
@@ -167,8 +213,8 @@ class MultiagentReap(Reap):
                  stakes_kwargs=None,
                  interaction="collaborative",
                  save_info=False,
-                 cluster_args=None
-                 ):
+                 cluster_args=None,
+                 log_file=None):
         """Constructor for multiagent Reap class.
 
         :param system: Simulation object.
@@ -204,27 +250,41 @@ class MultiagentReap(Reap):
         :param cluster_args: list[float, int].
             List of parameters for RegularSpace clustering (dmin, max_centers). dmin is the minimum distance admissible
             between two centers. max_centers is the maximum number of clusters that can be created.
+        :param log_file: str.
+            Path to log_file. Passing this argument will supersede all other parameters.
         """
-        Reap.__init__(self, system=system, root=root, basename=basename, save_format=save_format, save_rate=save_rate,
-                      features=features, cv_weights=cv_weights, delta=delta, n_candidates=n_candidates,
-                      save_info=save_info, cluster_args=cluster_args)
-        self.n_agents = n_agents
-        # Three options to initialize cv_weights
-        if cv_weights is None:  # All weights equal
-            cv_weights = [1 / self.n_features for _ in range(self.n_features)]
-            self.agent = [AgentReap(cv_weights, delta) for _ in range(self.n_agents)]
-        elif np.asarray(cv_weights).shape == (self.n_agents, self.n_features):  # Custom weights for each agent
-            self.agent = [AgentReap(cv_weights[i], delta) for i in range(self.n_agents)]
-        elif np.asarray(cv_weights).shape == (self.n_features,):  # Custom weights (same for all agents)
-            self.agent = [AgentReap(cv_weights, delta) for _ in range(self.n_agents)]
+        Reap.__init__(self,
+                      system=system,
+                      root=root,
+                      basename=basename,
+                      save_format=save_format,
+                      save_rate=save_rate,
+                      features=features,
+                      cv_weights=cv_weights,
+                      delta=delta,
+                      n_candidates=n_candidates,
+                      save_info=save_info,
+                      cluster_args=cluster_args)
+        if log_file is None:
+            self.n_agents = n_agents
+            # Three options to initialize cv_weights
+            if cv_weights is None:  # All weights equal
+                cv_weights = [1 / self.n_features for _ in range(self.n_features)]
+                self.agent = [AgentReap(cv_weights, delta) for _ in range(self.n_agents)]
+            elif np.asarray(cv_weights).shape == (self.n_agents, self.n_features):  # Custom weights for each agent
+                self.agent = [AgentReap(cv_weights[i], delta) for i in range(self.n_agents)]
+            elif np.asarray(cv_weights).shape == (self.n_features,):  # Custom weights (same for all agents)
+                self.agent = [AgentReap(cv_weights, delta) for _ in range(self.n_agents)]
 
-        self.fhandler = FileHandlerMultiagent(root, n_agents, basename, save_format)
-        self.stakes = None
-        self.stakes_method = stakes_method
-        self.stakes_kwargs = stakes_kwargs if stakes_kwargs else {}
-        self._cached_agent_trajs = [set() for _ in range(n_agents)]
-        self._cached_agent_trajs_ordered = [[] for _ in range(n_agents)]
-        self.interaction = interaction
+            self.fhandler = FileHandlerMultiagent(root, n_agents, basename, save_format)
+            self.stakes = None
+            self.stakes_method = stakes_method
+            self.stakes_kwargs = stakes_kwargs if stakes_kwargs else {}
+            self._cached_agent_trajs = [set() for _ in range(n_agents)]
+            self._cached_agent_trajs_ordered = [[] for _ in range(n_agents)]
+            self.interaction = interaction
+        elif isinstance(log_file, str):
+            self._reload(log_file)
 
     def _save_logs(self, filename):
         """Save logging information of the run.
@@ -241,6 +301,8 @@ class MultiagentReap(Reap):
             n_round=self.n_round,
             features=self.features,
             n_features=self.n_features,
+            cluster_args=self.cluster_args,
+            cluster_object=self._cluster_object,
             states=self.states,
             n_agents=self.n_agents,
             n_candidates=self.n_candidates,
@@ -253,6 +315,38 @@ class MultiagentReap(Reap):
         path = os.path.join(root_dir, filename)
         with open(path, "wb") as outfile:
             pickle.dump(logs, outfile)
+
+    def _reload(self, log_file):
+        """Reset simulation object to state in log_file. Called in constructor.
+
+        For this method to work, trajectories should be found where self.fhandler expects them.
+
+        :param log_file: str.
+            Path to log file.
+        """
+        with open(log_file, "rb") as infile:
+            logs = pickle.load(infile)
+        self.system = logs['system']
+        self.fhandler = logs['fhandler']
+        self.save_rate = logs['save_rate']
+        self.n_round = logs['n_round']
+        self.features = logs['features']
+        self.n_features = logs['n_features']
+        self.cluster_args = logs['cluster_args']
+        self._cluster_object = logs['cluster_object']
+        self.states = logs['states']
+        self.n_agents = logs['n_agents']
+        self.n_candidates = logs['n_candidates']
+        self.agent = [
+            AgentReap(logs=a_log) for a_log in logs['agent_logs']
+        ]
+        self.save_info = True  # If loading from log file, assume that log files are required
+        self.data = None
+        self.concat_data = None
+        self._cached_trajs = set()
+        self._cached_trajs_ordered = []
+        self._cluster_object = None
+        self._update_data()
 
     def _update_data(self):
         """Update data with newly saved trajectories.
