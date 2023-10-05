@@ -90,24 +90,25 @@ class LeastCounts(AdaptiveSampling):
         :param log_file: str.
             Path to log_file. Passing this argument will supersede all other parameters.
         """
-        self.system = system
-        self.fhandler = FileHandler(root, basename, save_format)
-        self.save_rate = save_rate
-        self.n_round = 0
-        self.features = features
-        self.n_features = len(features)
-        self.data = None
-        self.concat_data = None
-        self.states = None
-        self._cached_trajs = set()  # Set of trajectory files already read into memory
-        self._cached_trajs_ordered = []
-        self._cluster_object = None
-        self.save_info = save_info  # Used to output information about the run
-        if cluster_args is None:
-            self.cluster_args = [2e-3, 0.7, 10000]  # Depends on clustering algorithm --> This is (gamma, b, batch_size)
-        else:
-            self.cluster_args = cluster_args
-        if isinstance(log_file, str):
+        if log_file is None:
+            self.system = system
+            self.fhandler = FileHandler(root, basename, save_format)
+            self.save_rate = save_rate
+            self.n_round = 0
+            self.features = features
+            self.n_features = len(features)
+            self.data = None
+            self.concat_data = None
+            self.states = None
+            self._cached_trajs = set()  # Set of trajectory files already read into memory
+            self._cached_trajs_ordered = []
+            self._cluster_object = None
+            self.save_info = save_info  # Used to output information about the run
+            if cluster_args is None:
+                self.cluster_args = [2e-3, 0.7, 10000]  # Depends on clustering algorithm --> This is (gamma, b, batch_size)
+            else:
+                self.cluster_args = cluster_args
+        elif isinstance(log_file, str):
             self._reload(log_file)
 
     def save(self, path):
@@ -299,9 +300,9 @@ class LeastCounts(AdaptiveSampling):
             self.system.launch_trajectory(positions, n_steps, fname, self.save_rate)
         self.fhandler.check_files(self.system.top_file)
         self._update_data()  # Update data from new trajectories
-        if self.save_info:
-            self._save_logs("logs_round_{}.pkl".format(self.n_round))
         self.n_round += 1
+        if self.save_info:
+            self._save_logs("logs_round_{}.pkl".format(self.n_round - 1))
 
 
 class LeastCountsBis(LeastCounts):
@@ -459,17 +460,17 @@ class VampLeastCounts(LeastCountsRegSpace):
         :param log_file: str.
             Path to log_file. Passing this argument will supersede all other parameters.
         """
-        LeastCountsRegSpace.__init__(self,
-                                     system=system,
-                                     root=root,
-                                     basename=basename,
-                                     save_format=save_format,
-                                     save_rate=save_rate,
-                                     features=features,
-                                     save_info=save_info,
-                                     cluster_args=cluster_args
-                                     )
         if log_file is None:
+            LeastCountsRegSpace.__init__(self,
+                                         system=system,
+                                         root=root,
+                                         basename=basename,
+                                         save_format=save_format,
+                                         save_rate=save_rate,
+                                         features=features,
+                                         save_info=save_info,
+                                         cluster_args=cluster_args
+                                         )
             self.ndim = ndim
             self.lagtime = lagtime
             self.propagation_steps = propagation_steps
@@ -620,18 +621,18 @@ class VampNetLeastCounts(VampLeastCounts):
         :param log_file: str.
             Path to log_file. Passing this argument will supersede all other parameters.
         """
-        VampLeastCounts.__init__(self,
-                                 system=system,
-                                 root=root,
-                                 basename=basename,
-                                 save_format=save_format,
-                                 save_rate=save_rate,
-                                 features=features,
-                                 save_info=save_info,
-                                 cluster_args=cluster_args,
-                                 ndim=ndim,
-                                 lagtime=lagtime)
         if log_file is None:
+            VampLeastCounts.__init__(self,
+                                     system=system,
+                                     root=root,
+                                     basename=basename,
+                                     save_format=save_format,
+                                     save_rate=save_rate,
+                                     features=features,
+                                     save_info=save_info,
+                                     cluster_args=cluster_args,
+                                     ndim=ndim,
+                                     lagtime=lagtime)
             self.batch_size = vnet_batch_size
             self.epochs = vnet_epochs
             self.device_name = device
@@ -696,6 +697,8 @@ class VampNetLeastCounts(VampLeastCounts):
         self.states = logs['states']
         self.ndim = logs['ndim']
         self.lagtime = logs['lagtime']
+        self.batch_size = logs['batch_size']
+        self.epochs = logs['epochs']
         self.device_name = logs['device_name']
         self.vnet_num_threads = logs['vnet_num_threads']
         self._set_device(self.device_name, self.vnet_num_threads)

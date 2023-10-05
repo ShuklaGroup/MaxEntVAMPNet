@@ -341,6 +341,10 @@ class EntropyBasedAgent(Agent):
 
     def _reload(self, logs):
         self.estimator = logs['estimator']
+        # Data fields are set by self.set_data()
+        self.data = None
+        self.data_concat = None
+        self.transformed_data = None
 
     def set_data(self, data):
         """Set data (trajectories) for the agent.

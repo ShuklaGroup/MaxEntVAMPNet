@@ -72,16 +72,16 @@ class EntropyBasedSampling(LeastCountsRegSpace):
         :param vnet_output_states: int.
             NUmber of output dimensions for VAMPNet. This parameter replaces ndim in other classes.
         """
-        LeastCountsRegSpace.__init__(self,
-                                     system=system,
-                                     root=root,
-                                     basename=basename,
-                                     save_format=save_format,
-                                     save_rate=save_rate,
-                                     features=features,
-                                     save_info=save_info,
-                                     cluster_args=cluster_args)
         if log_file is None:
+            LeastCountsRegSpace.__init__(self,
+                                         system=system,
+                                         root=root,
+                                         basename=basename,
+                                         save_format=save_format,
+                                         save_rate=save_rate,
+                                         features=features,
+                                         save_info=save_info,
+                                         cluster_args=cluster_args)
             self.n_candidates = n_candidates
             self.lagtime = lagtime
             self.n_features = len(features)
@@ -148,6 +148,12 @@ class EntropyBasedSampling(LeastCountsRegSpace):
         self.n_agents = logs['n_agents']
         self.n_candidates = logs['n_candidates']
         self.lagtime = logs['lagtime']
+        self.batch_size = logs['batch_size']
+        self.epochs = logs['epochs']
+        self.device_name = logs['device_name']
+        self.vnet_num_threads = logs['vnet_num_threads']
+        self.output_states = logs['output_states']
+        self.estimator = logs['estimator']
         self.agent = EntropyBasedAgent(logs=logs['agent_logs'])
         self.save_info = True  # If loading from log file, assume that log files are required
         self.data = None
